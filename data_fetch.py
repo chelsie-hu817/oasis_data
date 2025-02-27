@@ -19,7 +19,7 @@ def get_available_dates(year, month):
     else:
         end_day = 31
 
-    return f"{year}{month:02d}03T00:00-0000", f"{year}{month:02d}{end_day - 2}T23:59-0000"
+    return f"{year}{month:02d}01T00:00-0000", f"{year}{month:02d}{end_day}T23:59-0000"
 
 
 def fetch_monthly_data(start_time, end_time, queryname, mkt_run_id):
