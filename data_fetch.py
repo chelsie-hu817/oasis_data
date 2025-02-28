@@ -10,22 +10,45 @@ import config
 import openpyxl
 from datetime import datetime, timedelta
 
-def get_available_dates(year, month):
-    """Estimate the best start and end dates for a month based on typical publication delays."""
-    if month == 2:  # February case, account for leap years
-        end_day = 29 if year % 4 == 0 else 28
-    elif month in {4, 6, 9, 11}:  # Months with 30 days
-        end_day = 30
-    else:
-        end_day = 31
 
+<<<<<<< HEAD
     return f"{year}{month:02d}01T00:00-0000", f"{year}{month:02d}{end_day}T23:59-0000"
+=======
+def get_rolling_dates(start_date, end_date, window_size=20):
+    """
+    Generates non-overlapping start and end dates with a fixed window size.
+>>>>>>> d256f4a (Updated data_fetch function for rolling window)
 
+    Parameters:
+    - start_date: The beginning date for the data request (YYYY-MM-DD format)
+    - end_date: The last date for the data request (YYYY-MM-DD format)
+    - window_size: The number of days in each rolling window
 
-def fetch_monthly_data(start_time, end_time, queryname, mkt_run_id):
+    Returns:
+    - List of tuples containing (start_time, end_time)
+    """
+    start_date = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date = datetime.strptime(end_date, "%Y-%m-%d")
+
+    rolling_dates = []
+    current_start = start_date
+
+    while current_start <= end_date:
+        current_end = current_start + timedelta(days=window_size - 1)
+        if current_end > end_date:
+            current_end = end_date  # Adjust the last window to not exceed end_date
+
+        rolling_dates.append((current_start.strftime("%Y%m%dT00:00-0000"),
+                              current_end.strftime("%Y%m%dT23:59-0000")))
+
+        current_start += timedelta(days=window_size)  # Move forward by window size (no overlap)
+
+    return rolling_dates
+
+def fetch_data(start_time, end_time, queryname, mkt_run_id):
     """Fetches SLD_FCST data for a given time period."""
     params = {
-        "queryname": queryname,  # "SLD_FCST"
+        "queryname": queryname,       #"SLD_FCST"
         "startdatetime": start_time,
         "enddatetime": end_time,
         "market_run_id": mkt_run_id,  # "ACTUAL"
@@ -77,52 +100,40 @@ def parse_xml_data(xml_content):
     return pd.DataFrame(data)
 
 
-def data_fetch(year_start, year_end):
-    df_gen = pd.DataFrame()
-    for year in range(year_start, year_end):
-        for month in range(1, 13):
-            start_time, end_time = get_available_dates(year, month)
-            xml_content = fetch_monthly_data(start_time, end_time, config.queryname_gen, config.mkt_run_id_gen)
-
-            if xml_content:
-                df_month = parse_xml_data(xml_content)
-                #print(df_month.head())
-                df_gen = pd.concat([df_gen, df_month], ignore_index=True)
-
-    df_gen.to_excel(config.DATA_FILE_PATH_GEN)
-    print('Gen saved')
+def data_fetch(start_date, end_date, window_size = 20):
+    rolling_windows = get_rolling_dates(start_date, end_date, window_size)
 
     df_load = pd.DataFrame()
-    for year in range(year_start, year_end):
-         for month in range(1, 13):
-             start_time, end_time = get_available_dates(year, month)
-             xml_content = fetch_monthly_data(start_time, end_time, config.queryname_load, config.mkt_run_id_load)
+    for start_time, end_time in rolling_windows:
+        xml_content = fetch_data(start_time, end_time, queryname=config.queryname_load, mkt_run_id=config.mkt_run_id_load)
 
-             if xml_content:
-                 df_month = parse_xml_data(xml_content)
-                 df_load = pd.concat([df_load, df_month], ignore_index=True)
-
+        if xml_content:
+            df_window_load = parse_xml_data(xml_content)
+            print(df_window_load.head())
+            df_load = pd.concat([df_load, df_window_load], ignore_index=True)
     df_load.to_excel(config.DATA_FILE_PATH_LOAD)
-    print('Load saved')
 
+    df_gen = pd.DataFrame()
+    for start_time, end_time in rolling_windows:
+        xml_content = fetch_data(start_time, end_time, queryname=config.queryname_gen, mkt_run_id=config.mkt_run_id_gen)
 
-    df_trans = pd.DataFrame()
-    for year in range(year_start, year_end):
-        for month in range(1, 13):
-            start_time, end_time = get_available_dates(year, month)
-            xml_content = fetch_monthly_data(start_time, end_time, config.queryname_trans, config.mkt_run_id_trans)
+        if xml_content:
+            df_window_gen = parse_xml_data(xml_content)
+            df_gen = pd.concat([df_gen, df_window_gen], ignore_index=True)
+    df_gen.to_excel(config.DATA_FILE_PATH_GEN)
 
-            if xml_content:
-                df_month = parse_xml_data(xml_content)
-                df_month = df_month[df_month['DATA_ITEM'].isin(['ISO_TOT_EXP_MW', 'ISO_TOT_IMP_MW'])]
-                df_month = df_month[df_month['RESOURCE_NAME'] == 'Caiso_Totals']
-                df_trans = pd.concat([df_trans, df_month], ignore_index=True)
+    df_trans= pd.DataFrame()
+    for start_time, end_time in rolling_windows:
+        xml_content = fetch_data(start_time, end_time, queryname=config.queryname_trans, mkt_run_id=config.mkt_run_id_trans)
 
+        if xml_content:
+            df_window_trans = parse_xml_data(xml_content)
+            df_window_trans = df_window_trans[df_window_trans['DATA_ITEM'].isin(['ISO_TOT_EXP_MW', 'ISO_TOT_EXP_MW'])]
+            df_window_trans = df_window_trans[df_window_trans['RESOURCE_NAME'] == 'Caiso_Totals']
+            df_trans = pd.concat([df_trans, df_window_trans], ignore_index=True)
     df_trans.to_excel(config.DATA_FILE_PATH_TRANS)
-    print('Trans saved')
 
-
-
+    print("Data fetching and saving completed for df_load, df_gen, and df_trans.")
 
 
 

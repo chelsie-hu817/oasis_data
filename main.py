@@ -5,11 +5,11 @@ import data_process
 
 
 def main():
-    year_start = 2023
-    year_end = 2024
+    start_date = "2019-01-01"
+    end_date = "2019-03-02"
 
     print("Fetching data from OASIS...")
-    data_fetch.data_fetch(year_start, year_end)
+    data_fetch.data_fetch(start_date, end_date)
 
     print("Processing data...")
     df_merged = data_process.process_data()
